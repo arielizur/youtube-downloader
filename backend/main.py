@@ -37,7 +37,6 @@ jobs: dict[str, JobStatus] = {}
 
 def _yt_dlp_download(job_id: str, url: str, format_type: str) -> dict:
     try:
-        # הגדרת נתיב שמירה לקובץ
         outtmpl = str(DOWNLOADS_DIR / f'%(title)s_{job_id}.%(ext)s')
         
         ydl_opts = {
@@ -49,6 +48,11 @@ def _yt_dlp_download(job_id: str, url: str, format_type: str) -> dict:
                 }
             }
         }
+        
+        # טעינת קובץ עוגיות כדי לעקוף את חסימות יוטיוב בשרת
+        cookie_path = str(Path(__file__).parent.parent / "cookies.txt")
+        if os.path.exists(cookie_path):
+            ydl_opts['cookiefile'] = cookie_path
         
         if format_type == 'mp3':
             ydl_opts.update({
@@ -63,11 +67,11 @@ def _yt_dlp_download(job_id: str, url: str, format_type: str) -> dict:
             ydl_opts.update({
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             })
+
         jobs[job_id].message = "מוריד קובץ ישירות מיוטיוב..."
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            # איתור השם הסופי של הקובץ שנוצר
             if format_type == 'mp3':
                 filename = ydl.prepare_filename(info).rsplit('.', 1)[0] + '.mp3'
             else:
@@ -78,7 +82,7 @@ def _yt_dlp_download(job_id: str, url: str, format_type: str) -> dict:
         
     except Exception as e:
         return {"ok": False, "error": str(e)}
-        
+
 async def _run_download(job_id: str, youtube_url: str, format_type: str):
     jobs[job_id].status = "running"
     jobs[job_id].message = "מעבד את הקישור..."
