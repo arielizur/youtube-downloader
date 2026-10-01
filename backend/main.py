@@ -40,9 +40,14 @@ def _yt_dlp_download(job_id: str, url: str, format_type: str) -> dict:
         # הגדרת נתיב שמירה לקובץ
         outtmpl = str(DOWNLOADS_DIR / f'%(title)s_{job_id}.%(ext)s')
         
-        ydl_opts = {
+               ydl_opts = {
             'outtmpl': outtmpl,
             'noplaylist': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'ios']
+                }
+            }
         }
         
         if format_type == 'mp3':
