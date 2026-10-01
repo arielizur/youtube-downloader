@@ -40,7 +40,7 @@ def _yt_dlp_download(job_id: str, url: str, format_type: str) -> dict:
         # הגדרת נתיב שמירה לקובץ
         outtmpl = str(DOWNLOADS_DIR / f'%(title)s_{job_id}.%(ext)s')
         
-               ydl_opts = {
+        ydl_opts = {
             'outtmpl': outtmpl,
             'noplaylist': True,
             'extractor_args': {
@@ -63,7 +63,6 @@ def _yt_dlp_download(job_id: str, url: str, format_type: str) -> dict:
             ydl_opts.update({
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             })
-
         jobs[job_id].message = "מוריד קובץ ישירות מיוטיוב..."
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -79,7 +78,7 @@ def _yt_dlp_download(job_id: str, url: str, format_type: str) -> dict:
         
     except Exception as e:
         return {"ok": False, "error": str(e)}
-
+        
 async def _run_download(job_id: str, youtube_url: str, format_type: str):
     jobs[job_id].status = "running"
     jobs[job_id].message = "מעבד את הקישור..."
