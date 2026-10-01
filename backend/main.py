@@ -3,8 +3,10 @@ import os
 import re
 import uuid
 import time
-import requests
 from pathlib import Path
+
+# ספריה המזייפת טביעת אצבע של כרום כדי לעקוף את חסימות Cloudflare
+from curl_cffi import requests
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,13 +41,11 @@ jobs: dict[str, JobStatus] = {}
 
 def _download_from_worker(job_id: str, youtube_url: str, format_type: str) -> dict:
     try:
-        # חילוץ ה-ID של הסרטון
         video_id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11}).*', youtube_url)
         if not video_id_match:
             return {"ok": False, "error": "Invalid YouTube URL"}
         video_id = video_id_match.group(1)
 
-        # פנייה ל-API הסודי (Cloudflare Worker) שגילינו מקוד המקור
         url = f"https://fancy-sea-5d3d.holy-breeze-fec5.workers.dev/?m=i&v={video_id}&f={format_type}&_={int(time.time()*1000)}"
         headers = {
             "Origin": "https://convertytmp3.org",
@@ -54,10 +54,13 @@ def _download_from_worker(job_id: str, youtube_url: str, format_type: str) -> di
         }
         
         jobs[job_id].message = "מתחבר לשרתי ההמרה הסודיים..."
-        r = requests.get(url, headers=headers, timeout=15)
-        r.raise_for_status()
-        data = r.json()
+        # השורה הזו (impersonate="chrome120") היא פריצת הדרך!
+        r = requests.get(url, headers=headers, impersonate="chrome120", timeout=15)
         
+        if r.status_code != 200:
+            return {"ok": False, "error": f"Cloudflare block or server error (HTTP {r.status_code})"}
+            
+        data = r.json()
         if data.get("error", 0) > 0:
             return {"ok": False, "error": f"Server error: {data.get('error')}"}
             
@@ -65,22 +68,20 @@ def _download_from_worker(job_id: str, youtube_url: str, format_type: str) -> di
         download_url = data.get("downloadURL")
         title = data.get("title", f"video_{job_id}")
         
-        # המתנה לסיום המרת הסרטון
-        for _ in range(40): # המתנה של עד שתי דקות
+        for _ in range(40):
             jobs[job_id].message = f"ממיר את הסרטון: {title[:25]}..."
             time.sleep(3)
-            pr = requests.get(f"{progress_url}&_={int(time.time()*1000)}", headers=headers, timeout=10)
+            pr = requests.get(f"{progress_url}&_={int(time.time()*1000)}", headers=headers, impersonate="chrome120", timeout=10)
             pdata = pr.json()
             if pdata.get("progress") == 3:
                 break
         
         jobs[job_id].message = "מוריד את הקובץ המוכן לשרת שלנו..."
         
-        # הורדת הקובץ אלינו
-        r_down = requests.get(download_url, headers=headers, stream=True)
-        r_down.raise_for_status()
-        
-        # הוצאת השם המקורי של הקובץ מהכותרות (Headers)
+        r_down = requests.get(download_url, headers=headers, impersonate="chrome120", stream=True)
+        if r_down.status_code != 200:
+            return {"ok": False, "error": "Failed to download file."}
+            
         cd = r_down.headers.get('Content-Disposition', '')
         fname_match = re.search(r'filename="([^"]+)"', cd)
         if fname_match:
@@ -88,7 +89,6 @@ def _download_from_worker(job_id: str, youtube_url: str, format_type: str) -> di
         else:
             filename = f"{title}.{format_type}"
             
-        # ניקוי השם מתווים בעייתיים בשרתים
         filename = "".join([c for c in filename if c.isalpha() or c.isdigit() or c in " .-_()א-ת"]).rstrip()
         
         save_path = DOWNLOADS_DIR / filename
@@ -104,7 +104,6 @@ def _download_from_worker(job_id: str, youtube_url: str, format_type: str) -> di
 async def _run_download(job_id: str, youtube_url: str, format_type: str):
     jobs[job_id].status = "running"
     jobs[job_id].message = "מתחיל תהליך..."
-
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(None, _download_from_worker, job_id, youtube_url, format_type)
 
