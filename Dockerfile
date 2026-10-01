@@ -17,5 +17,7 @@ COPY . .
 ENV PORT=8000
 EXPOSE $PORT
 
+ENV PYTHONPATH=/app
+
 # פקודת ההפעלה של השרת
 CMD uvicorn backend.main:app --host 0.0.0.0 --port ${PORT}
