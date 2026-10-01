@@ -8,12 +8,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const loaderContainer = document.getElementById('loader-container');
     const downloadLink = document.getElementById('download-link');
 
-    let pollingInterval = null;
-
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         
-        const baseUrl = document.getElementById('base-url').value;
         const youtubeUrl = document.getElementById('youtube-url').value;
         const formatType = document.getElementById('format').value;
 
@@ -22,82 +19,72 @@ document.addEventListener('DOMContentLoaded', () => {
         statusCard.classList.remove('hidden');
         downloadLink.classList.add('hidden');
         loaderContainer.classList.remove('hidden');
-        statusTitle.textContent = 'שולח בקשה...';
+        statusTitle.textContent = 'מחלץ פרטים...';
         statusTitle.classList.remove('error-text');
-        statusMessage.textContent = 'מתחיל את התהליך בשרת.';
+        statusMessage.textContent = 'מתחיל את התהליך (רץ ישירות מהדפדפן שלך!)';
         
-        if (pollingInterval) clearInterval(pollingInterval);
+        // חילוץ ID מהקישור
+        const videoIdMatch = youtubeUrl.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
+        if (!videoIdMatch) {
+            showError("לא נמצא מזהה סרטון תקין בקישור.");
+            return;
+        }
+        const videoId = videoIdMatch[1];
 
         try {
-            const response = await fetch('/api/download', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    base_url: baseUrl,
-                    youtube_url: youtubeUrl,
-                    format_type: formatType
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error('שגיאה בחיבור לשרת');
+            statusMessage.textContent = 'מתחבר לשרתי ההמרה...';
+            
+            // 1. קריאה ראשונית ל-API
+            const initUrl = `https://fancy-sea-5d3d.holy-breeze-fec5.workers.dev/?m=i&v=${videoId}&f=${formatType}&_=${Date.now()}`;
+            const initRes = await fetch(initUrl);
+            const initData = await initRes.json();
+            
+            if (initData.error > 0) {
+                throw new Error("שגיאה בשרת ההמרה: " + initData.error);
             }
 
-            const data = await response.json();
-            const jobId = data.job_id;
+            const title = initData.title || "video";
+            const progressUrl = initData.progressURL;
+            const downloadUrl = initData.downloadURL;
+
+            statusTitle.textContent = 'ממיר סרטון...';
             
-            // Start polling
-            pollStatus(jobId);
+            // 2. המתנה (Polling)
+            const checkProgress = async () => {
+                statusMessage.textContent = `מעבד: ${title}...`;
+                const pRes = await fetch(`${progressUrl}&_=${Date.now()}`);
+                const pData = await pRes.json();
+                
+                if (pData.progress === 3) {
+                    showSuccess(downloadUrl, `${title}.${formatType}`, "ההמרה הסתיימה! מוריד כעת...");
+                } else if (pData.error > 0) {
+                    showError("שגיאה במהלך ההמרה.");
+                } else {
+                    setTimeout(checkProgress, 3000);
+                }
+            };
+            
+            checkProgress();
 
         } catch (error) {
-            showError(error.message);
+            showError(error.message || "שגיאת חיבור");
         }
     });
 
-    function pollStatus(jobId) {
-        pollingInterval = setInterval(async () => {
-            try {
-                const res = await fetch(`/api/status/${jobId}`);
-                if (!res.ok) throw new Error('שגיאה בבדיקת סטטוס');
-                
-                const data = await res.json();
-                
-                // Update UI based on status
-                statusMessage.textContent = data.message || 'מעבד...';
-
-                if (data.status === 'running') {
-                    statusTitle.textContent = 'מבצע המרה';
-                } else if (data.status === 'done') {
-                    clearInterval(pollingInterval);
-                    showSuccess(jobId, data.filename, data.message);
-                } else if (data.status === 'error') {
-                    clearInterval(pollingInterval);
-                    showError(data.message || 'אירעה שגיאה לא ידועה');
-                }
-
-            } catch (error) {
-                clearInterval(pollingInterval);
-                showError('אבד החיבור לשרת בזמן בדיקת הסטטוס.');
-            }
-        }, 2000); // Poll every 2 seconds
-    }
-
-    function showSuccess(jobId, filename, message) {
+    function showSuccess(downloadUrl, filename, message) {
         loaderContainer.classList.add('hidden');
-        statusTitle.textContent = 'ההמרה הסתיימה בהצלחה! 🎉';
+        statusTitle.textContent = 'מוכן! 🎉';
         statusMessage.textContent = message;
         
-        downloadLink.href = `/api/file/${jobId}`;
+        downloadLink.href = downloadUrl;
         downloadLink.download = filename;
         downloadLink.classList.remove('hidden');
         
         submitBtn.disabled = false;
         
-        // Auto-click the download link
         setTimeout(() => {
-            downloadLink.click();
+            // לחיצה אוטומטית שפותחת את הקובץ
+            window.location.href = downloadUrl;
         }, 500);
     }
 
